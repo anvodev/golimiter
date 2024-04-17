@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -32,18 +33,30 @@ func makeHTTPHandlerFunc(f apiFunc) http.HandlerFunc {
 type APIServer struct {
 	listenAddr string
 	counter    int64
+	rateLimit  int64
 }
 
 func NewAPIServer(listenAddr string) *APIServer {
 	return &APIServer{
 		listenAddr: listenAddr,
-		counter:    2,
+		counter:    4,
+		rateLimit:  4,
 	}
 }
 
-func (s *APIServer) rateLimit(next http.Handler) http.Handler {
+func (s *APIServer) handleRateLimit(next http.Handler) http.Handler {
+	ticker := time.NewTicker(5 * time.Second) // fill 2 tokens every 5 seconds
+	go func() {
+		for {
+			t := <-ticker.C
+			fmt.Println("Fill up the Rate Limiter Counter", t)
+			filled := s.counter + 2
+			s.counter = int64(min(float64(s.rateLimit), float64(filled)))
+		}
+	}()
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Ratelimit-limit", "2")
+		w.Header().Set("X-Ratelimit-limit", strconv.FormatInt(s.rateLimit, 10))
 		if s.counter == 0 {
 			w.Header().Set("X-Ratelimit-Retry-After", "forever")
 			w.Header().Set("X-Ratelimit-Remaining", strconv.Itoa(int(s.counter)))
@@ -64,7 +77,7 @@ func (s *APIServer) Run() {
 
 	fmt.Println("server http on port ", s.listenAddr)
 
-	panic(http.ListenAndServe(s.listenAddr, s.rateLimit(server)))
+	panic(http.ListenAndServe(s.listenAddr, s.handleRateLimit(server)))
 }
 
 func handlePing(w http.ResponseWriter, r *http.Request) error {
