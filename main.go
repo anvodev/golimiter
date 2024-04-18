@@ -16,5 +16,5 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 	fmt.Println("Server is running on port :4000")
-	http.ListenAndServe(":4000", mux)
+	http.ListenAndServe(":4000", rateLimiter(mux))
 }
